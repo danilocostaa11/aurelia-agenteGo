@@ -5,6 +5,7 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
 import { query } from "@anthropic-ai/claude-agent-sdk";
+import { feedbackMcp } from "self-improving-agent/claude";
 
 // Resolve the SDK's cli.js at runtime so the bundled import.meta.url
 // doesn't break the SDK's own path resolution.
@@ -185,7 +186,9 @@ async function buildSDKOptions(opts: RequestOptions | undefined) {
       sdkOpts.allowDangerouslySkipPermissions = true;
     }
   }
-  if (opts.allowed_tools) sdkOpts.allowedTools = opts.allowed_tools;
+  // self-improving-agent: propõe diff + abre draft PR após aprovação explícita
+  const fb = feedbackMcp();
+  sdkOpts.allowedTools = [...(opts.allowed_tools ?? []), ...fb.allowedTools];
 
   // Load user settings unless explicitly disabled (e.g. cron jobs)
   if (opts.no_user_settings) {
@@ -226,10 +229,8 @@ async function buildSDKOptions(opts: RequestOptions | undefined) {
   // Merge agent MCP servers with cloud MCPs from claude.ai
   const cloudServers = opts.no_user_settings ? {} : await loadCloudMCPs();
   const agentServers = opts.mcp_servers ?? {};
-  const merged = { ...cloudServers, ...agentServers }; // agent overrides cloud
-  if (Object.keys(merged).length > 0) {
-    sdkOpts.mcpServers = merged;
-  }
+  const merged = { ...cloudServers, ...agentServers, ...fb.mcpServers }; // agent overrides cloud
+  sdkOpts.mcpServers = merged;
 
   // Disable specific tools if requested
   if (opts.disabled_tools && opts.disabled_tools.length > 0) {
